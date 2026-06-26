@@ -92,17 +92,17 @@ ws.onmessage = (event) => {
       <input
         value={text}
         onChange={(e) => {
-          setText(e.target.value);
+          const value = e.target.value;
           setText(value);
 
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(
-              JSON.stringify({
-              type: value.trim() ? "typing" : "stop_typing",                
+          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+          wsRef.current.send(
+            JSON.stringify({
+              type: value.trim() ? "typing" : "stop_typing",
               user: name,
-              })
-            );
-          }
+            })
+          );
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") sendMessage();
