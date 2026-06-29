@@ -199,7 +199,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
+
+            
             data = await websocket.receive_json()
+
+            if data["type"] == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "ts": data.get("ts"),
+                })
+                continue
+
 
             if data["type"] == "join":
                 user = data["user"]

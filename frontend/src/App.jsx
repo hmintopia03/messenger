@@ -11,6 +11,7 @@ function App() {
   const wsRef = useRef(null);
   const typingTimeout = useRef(null);
   const bottomRef = useRef(null);
+  const heartbeatRef = useRef(null);
 
   const [name] = useState(username);
   const [text, setText] = useState("");
@@ -35,6 +36,11 @@ function App() {
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
   console.log(data);
+
+  if (data.type === "pong") {
+    console.log("PONG", data.ts);
+    return;
+  }
 
     switch (data.type) {
       case "typing":
@@ -102,17 +108,37 @@ ws.onmessage = (event) => {
 
   };
 
-    ws.onopen = () => {
+ws.onopen = () => {
+  ws.send(
+    JSON.stringify({
+      type: "join",
+      user: name,
+      room,
+    })
+  );
+
+  heartbeatRef.current = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(
         JSON.stringify({
-          type: "join",
-          user: name,
-          room,
+          type: "ping",
+          ts: Date.now(),
         })
       );
-    };
 
-    return () => ws.close();
+      console.log("PING");
+    }
+  }, 5000);
+};
+
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+
+      ws.close();
+    };
   }, []);
 
   const handleTyping = (value) => {
