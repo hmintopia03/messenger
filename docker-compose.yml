@@ -1,0 +1,43 @@
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "6380:6379"
+
+  backend1:
+    build: ./backend
+    container_name: messenger-backend-1
+    ports:
+      - "8001:8000"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+
+  backend2:
+    build: ./backend
+    container_name: messenger-backend-2
+    ports:
+      - "8002:8000"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    container_name: messenger-frontend
+    ports:
+      - "5174:5173"
+    depends_on:
+      - backend1
+      - backend2
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
