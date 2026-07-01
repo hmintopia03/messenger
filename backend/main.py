@@ -58,6 +58,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+pending_acks = {}
+
 DB_PATH = "messages.db"
 
 ROOMS = [
@@ -179,6 +181,15 @@ async def delete_message(message_id: str):
         )
         await db.commit()
 
+async def wait_for_ack(message_id: str, user: str, room: str):
+    await asyncio.sleep(5)
+
+    key = (message_id, user)
+
+    if key in pending_acks:
+        print(f"ACK TIMEOUT: {user} did not ack message {message_id} in room {room}")
+        pending_acks.pop(key, None)
+
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -242,6 +253,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 await save_message(data)
                 await publish(data)
+                key = (data["id"], data["user"])
+                pending_acks[key] = {
+                    "room": room,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+
+                asyncio.create_task(wait_for_ack(data["id"], data["user"], room))
 
             elif data["type"] == "typing":
                 await publish(data)
@@ -266,6 +284,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     "id": data["id"],
                     "status": "read",
                 })
+
+            elif data["type"] == "ack":
+                key = (data["id"], data["user"])
+                pending_acks.pop(key, None)
+
+                print(
+                    f"ACK from {data.get('user')} "
+                    f"for message {data.get('id')} "
+                    f"in room {data.get('room')}"
+                )
 
             elif data["type"] == "edit":
                 print("EDIT RECEIVED:", data)

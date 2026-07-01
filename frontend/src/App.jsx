@@ -54,6 +54,7 @@ function App() {
             type: "join",
             user: name,
             room,
+            last_message_id: lastMessageId,
           })
         );
 
@@ -94,6 +95,8 @@ function App() {
 
           case "chat":
             setMessages((prev) => [...prev, data]);
+            sendAck(data.id);
+
             if (data.user !== name && document.visibilityState === "visible") {
               setTimeout(() => {
                 if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -126,6 +129,19 @@ function App() {
             );
             break;
 
+          case "replay":
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map((msg) => msg.id));
+              const newMessages = data.messages.filter(
+                (msg) => !existingIds.has(msg.id)
+              );
+
+              newMessages.forEach((msg) => sendAck(msg.id));
+
+              return [...prev, ...newMessages];
+            });
+            break;
+
           case "edit":
             setMessages((prev) =>
               prev.map((msg) =>
@@ -141,16 +157,7 @@ function App() {
           default:
             break;
 
-          case "replay":
-            setMessages((prev) => {
-              const existingIds = new Set(prev.map((msg) => msg.id));
-              const newMessages = data.messages.filter(
-                (msg) => !existingIds.has(msg.id)
-              );
 
-              return [...prev, ...newMessages];
-            });
-            break;
         }
       };
 
@@ -201,6 +208,19 @@ function App() {
         type: value.trim() ? "typing" : "stop_typing",
         user: name,
         room,
+      })
+    );
+  };
+
+  const sendAck = (messageId) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "ack",
+        room,
+        id: messageId,
+        user: name,
       })
     );
   };
