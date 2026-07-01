@@ -219,6 +219,90 @@ This project explores core concepts behind real messenger systems:
 - How presence is shared across servers
 - This project also helped me understand the trade-offs between real-time communication, persistent storage, and distributed backend architecture.
 
+---
+
+## Messenger v2 Progress
+
+The second stage of this project focuses on making the messenger reliable under connection failures.
+
+### Implemented
+
+- Heartbeat with `ping` / `pong`
+- Automatic WebSocket reconnect
+- Rejoin after reconnect
+- Missed message replay after reconnect
+- ACK logging for received messages
+
+### Postponed
+
+- ACK timeout
+- Retry logic
+- Offline queue
+- Redis Streams
+- Observability dashboard
+
+## Learning roadmap
+
+### Phase 1: Real-time messenger
+
+✅ Completed
+
+- WebSocket messaging
+- Rooms
+- Redis Pub/Sub across backend instances
+- SQLite message history
+- Presence
+- Typing indicator
+- Reply / Edit / Delete
+- Delivery and read receipts
+- Message grouping UI
+
+### Phase 2: Reliable messenger
+
+✅ Completed
+
+- Heartbeat
+- Automatic reconnect
+- Missed message replay
+- ACK logging
+
+### Phase 3: Delivery guarantees
+
+Planned
+
+- Pending ACK tracking
+- ACK timeout
+- Retry
+- At-least-once delivery
+- Duplicate prevention
+
+### Phase 4: Operated messenger
+
+Planned
+
+- Metrics
+- Reconnect count
+- Message latency
+- Active connection count
+- Health dashboard
+
+## What I learned
+
+This project explores core concepts behind real messenger systems:
+
+- Why WebSocket is used for real-time communication
+- Why Redis is needed when there are multiple backend instances
+- Why messages need unique IDs
+- How message status changes over time
+- Why DB storage and real-time delivery are separate concerns
+- How room isolation works
+- How presence is shared across servers
+- How heartbeat detects active connections
+- How reconnect restores WebSocket sessions
+- How missed message replay recovers messages after disconnection
+- How ACK can be used as the basis for delivery guarantees
+
+This project also helped me understand the trade-offs between real-time communication, persistent storage, connection recovery, and distributed backend architecture.
 
 ## Running the project
 
