@@ -226,6 +226,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     "users": list(users),
                 })
 
+                last_message_id = data.get("last_message_id")
+                missed_messages = await get_messages_after(room, last_message_id)
+
+                if missed_messages:
+                    await websocket.send_json({
+                        "type": "replay",
+                        "messages": missed_messages,
+                    })
+
             elif data["type"] == "chat":
                 data["id"] = str(uuid.uuid4())
                 data["status"] = "sent"
@@ -322,3 +331,46 @@ async def get_messages(room: str = "general"):
     ]
 
     return messages
+async def get_messages_after(room: str, last_message_id: str | None):
+    await init_db()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        if last_message_id:
+            cursor = await db.execute(
+                """
+                SELECT id
+                FROM messages
+                WHERE message_id = ? AND room = ?
+                """,
+                (last_message_id, room),
+            )
+            row = await cursor.fetchone()
+            last_row_id = row[0] if row else 0
+        else:
+            last_row_id = 0
+
+        cursor = await db.execute(
+            """
+            SELECT message_id, room, user, message, status, reply_to, created_at
+            FROM messages
+            WHERE room = ? AND id > ?
+            ORDER BY id ASC
+            """,
+            (room, last_row_id),
+        )
+
+        rows = await cursor.fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "type": "chat",
+            "room": row[1],
+            "user": row[2],
+            "message": row[3],
+            "status": row[4],
+            "reply_to": json.loads(row[5]) if row[5] else None,
+            "created_at": row[6],
+        }
+        for row in rows
+    ]
