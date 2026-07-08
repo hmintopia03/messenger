@@ -95,7 +95,10 @@ function App() {
 
           case "chat":
             setMessages((prev) => [...prev, data]);
-            sendAck(data.id);
+
+            if (data.user !== name) {
+              sendAck(data.id);
+            }
 
             if (data.user !== name && document.visibilityState === "visible") {
               setTimeout(() => {
@@ -135,8 +138,6 @@ function App() {
               const newMessages = data.messages.filter(
                 (msg) => !existingIds.has(msg.id)
               );
-
-              newMessages.forEach((msg) => sendAck(msg.id));
 
               return [...prev, ...newMessages];
             });

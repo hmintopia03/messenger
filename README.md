@@ -1,39 +1,31 @@
 # Messenger
 
-A real-time messenger playground built to understand how modern chat systems work.
-Rather than stopping at a basic WebSocket chat application, this project explores how production messaging systems handle persistence, scalability, and connection reliability.
+A messenger engineering playground built to understand how modern messaging systems work.
 
-## Why this project
+Rather than stopping at a simple WebSocket chat application, this project explores how production-grade messengers achieve reliable message delivery, connection recovery, distributed communication, and operational visibility.
 
-Many chat tutorials end after implementing basic real-time messaging.
+The long-term goal is to build a messenger from first principles while learning the backend and infrastructure concepts behind platforms such as Slack, Discord, KakaoTalk, and Microsoft Teams.
 
-This project focuses on understanding the infrastructure behind modern messengers such as Slack, Discord, and KakaoTalk.
+---
 
-The goal is to answer questions like:
+# Why this project
 
-- How do users connected to different backend servers communicate?
-- Why doesn't the chat stop when one backend instance goes down?
-- How are missed messages recovered after reconnecting?
-- How are online users synchronized across servers?
+Many messenger tutorials stop after implementing real-time messaging.
 
-## Current capabilities
+In reality, production messaging systems must answer much harder questions:
 
-- Real-time messaging with WebSocket
-- Multiple FastAPI backend instances
-- Redis Pub/Sub
-- SQLite persistence
-- Rooms
-- Presence
-- Typing indicator
-- Delivery & Read receipts
-- Reply
-- Edit
-- Delete
-- Message grouping
-- Auto-scroll
-- Chat bubble UI
+* What happens if a user disconnects while receiving a message?
+* How do users connected to different backend servers communicate?
+* How are online users synchronized across multiple servers?
+* How are missed messages recovered after reconnecting?
+* How can a server know whether a message was actually delivered?
+* How can duplicate deliveries be prevented?
 
-## Architecture
+This project focuses on answering those questions by incrementally adding reliability and distributed system concepts rather than only building user-facing features.
+
+---
+
+# Architecture
 
 ```text
              Browser (Alice)
@@ -42,303 +34,366 @@ The goal is to answer questions like:
                     │
           FastAPI Backend 1
                     │
-          Redis Pub/Sub
+             Redis Pub/Sub
                     │
           FastAPI Backend 2
                     │
               WebSocket
                     │
-             Browser (Bob)
+              Browser (Bob)
 
         SQLite (Message History)
 ```
 
-## Tech Stack
+---
 
-- **Frontend:** React, Vite
-- **Backend:** FastAPI
-- **Realtime:** WebSocket
-- **Message bus:** Redis Pub/Sub
-- **Storage:** SQLite
-- **Dev environment:** Docker Compose
+# Tech Stack
 
-## Features
+### Frontend
 
-### Real-time chat
+* React
+* Vite
 
-Clients connect to the backend through WebSocket. When a user sends a message:
+### Backend
 
-```txt
-Client
-  -> FastAPI
-  -> SQLite save
-  -> Redis publish
-  -> other backends
-  -> connected clients
+* FastAPI
+
+### Realtime
+
+* WebSocket
+
+### Distributed Messaging
+
+* Redis Pub/Sub
+
+### Persistence
+
+* SQLite
+
+### Development
+
+* Docker Compose
+
+---
+
+# Current Capabilities
+
+## Core Messaging
+
+* Real-time WebSocket messaging
+* Chat rooms
+* SQLite message persistence
+* Reply
+* Edit
+* Delete
+
+## User Experience
+
+* Message grouping
+* Typing indicator
+* Presence
+* Delivery receipts
+* Read receipts
+* Auto-scroll
+* Chat bubble UI
+
+## Distributed Communication
+
+* Multiple backend instances
+* Redis Pub/Sub synchronization
+* Shared presence across servers
+
+## Connection Reliability
+
+* Heartbeat (Ping / Pong)
+* Automatic reconnect
+* Session rejoin
+* Missed message replay
+
+---
+
+# How Messages Flow
+
+When a user sends a message:
+
+```text
+Browser
+    │
+    ▼
+FastAPI
+    │
+    ├── Save to SQLite
+    │
+    └── Publish via Redis
+            │
+            ▼
+Other FastAPI instances
+            │
+            ▼
+Connected browsers
 ```
 
-### Multiple backend instances
+Persistent storage and real-time delivery are intentionally handled separately to reflect how production messaging systems are designed.
 
-The app runs two backend instances:
+---
 
-```txt
-backend1 : 8001
-backend2 : 8002
+# Distributed Architecture
+
+The project runs multiple backend instances simultaneously.
+
+```text
+backend1 :8001
+
+backend2 :8002
 ```
 
-Users connected to different backend instances can still chat because Redis Pub/Sub distributes events between them.
+Users connected to different backend servers can communicate because Redis Pub/Sub distributes chat events between backend instances.
 
-### Rooms
+---
 
-Messages are separated by room. Example URLs:
+# Rooms
 
-```txt
+Messages are isolated by room.
+
+Example:
+
+```text
 http://localhost:5174/?port=8001&user=Alice&room=general
+
 http://localhost:5174/?port=8002&user=Bob&room=general
+
 http://localhost:5174/?port=8001&user=Charlie&room=study
 ```
 
-Users in different rooms do not receive each other's messages.
-
-### Presence
-
-Online users are stored in Redis. This allows different backend instances to share the same online user list.
-
-```txt
-presence:general = { Alice, Bob }
-```
-
-### Message history
-
-Messages are stored in SQLite. When the browser loads:
-
-```txt
-GET /messages?room=general
-```
-
-fetches recent messages before opening the WebSocket connection.
-
-### Message lifecycle
-
-Messages have a lifecycle:
-
-```txt
-sent -> delivered -> read
-```
-
-Each message has a unique ID, so status updates can target a specific message.
-
-### Edit and delete
-
-Messages can be updated or deleted by sending WebSocket events.
-
-```txt
-edit   -> SQLite UPDATE -> Redis publish
-delete -> SQLite DELETE -> Redis publish
-```
-
-### Reply
-
-Messages can reference another message through `reply_to`. This allows reply-style UI similar to common messenger apps.
-
-### UI improvements
-
-The frontend includes:
-
-- Message bubbles
-- Left/right alignment
-- Grouped consecutive messages
-- Reply preview
-- Hover actions
-- Bottom input bar
-- Auto-scroll
-- Local time display
+Only users inside the same room receive each other's messages.
 
 ---
 
-## Messenger v2 Roadmap
+# Presence
 
-The next stage of this project focuses on operating a messenger reliably rather than adding more user-facing features.
+Online users are synchronized through Redis.
 
-### Connection reliability
+Example:
 
-- Heartbeat
-- Automatic reconnect
-- Missed message replay
+```text
+presence:general
 
-### Distributed systems
+Alice
+Bob
+Charlie
+```
 
-- Redis Streams
-- Delivery acknowledgement (ACK)
-- Offline queue
-- Multi-backend synchronization
-
-### Observability
-
-- Active connection count
-- Message latency
-- Reconnect metrics
-- Delivery timeline
-- Backend health dashboard
-
-### Future messenger features
-
-- File upload
-- Image messages
-- Emoji reactions
-- Search
-- Authentication
+This allows every backend instance to maintain the same view of connected users.
 
 ---
 
-## Learning roadmap
+# Message Lifecycle
 
-### Phase 1
+Current lifecycle:
 
-Build a real-time messenger.
+```text
+Sent
+    ↓
+Delivered
+    ↓
+Read
+```
 
-✅ Completed
-
-- WebSocket
-- Rooms
-- Redis Pub/Sub
-- Presence
-- Reply
--
-
-## What I learned
-
-This project explores core concepts behind real messenger systems:
-
-- Why WebSocket is used for real-time communication
-- Why Redis is needed when there are multiple backend instances
-- Why messages need unique IDs
-- How message status changes over time
-- Why DB storage and real-time delivery are separate concerns
-- How room isolation works
-- How presence is shared across servers
-- This project also helped me understand the trade-offs between real-time communication, persistent storage, and distributed backend architecture.
+Each message has a unique identifier so later updates can target the correct message.
 
 ---
 
-## Messenger v2 Progress
+# Connection Reliability
 
-The second stage of this project focuses on making the messenger reliable under connection failures.
+Messenger v2 focuses on handling unstable network conditions.
 
-### Implemented
+Currently implemented:
 
-- Heartbeat with `ping` / `pong`
-- Automatic WebSocket reconnect
-- Rejoin after reconnect
-- Missed message replay after reconnect
-- ACK logging for received messages
+* Heartbeat (Ping / Pong)
+* Automatic reconnect
+* Session rejoin
+* Missed message replay
 
-### Postponed
+These features allow clients to recover from temporary disconnections without manually refreshing the application.
 
-- ACK timeout
-- Retry logic
-- Offline queue
-- Redis Streams
-- Observability dashboard
+---
 
-## Learning roadmap
+# Reliability Roadmap
 
-### Phase 1: Real-time messenger
+The next step is moving from connection recovery to reliable message delivery.
 
-✅ Completed
+```text
+Heartbeat
+        │
+        ▼
+Automatic Reconnect
+        │
+        ▼
+Missed Message Replay
+        │
+        ▼
+Receiver ACK Tracking
+        │
+        ▼
+Pending ACK per Message
+        │
+        ▼
+ACK Timeout
+        │
+        ▼
+Retry
+        │
+        ▼
+Duplicate Prevention
+        │
+        ▼
+At-least-once Delivery
+        │
+        ▼
+Redis Streams
+```
 
-- WebSocket messaging
-- Rooms
-- Redis Pub/Sub across backend instances
-- SQLite message history
-- Presence
-- Typing indicator
-- Reply / Edit / Delete
-- Delivery and read receipts
-- Message grouping UI
+Rather than adding new chat features, the focus shifts toward making message delivery reliable under failures.
 
-### Phase 2: Reliable messenger
+---
 
-✅ Completed
+# Learning Roadmap
 
-- Heartbeat
-- Automatic reconnect
-- Missed message replay
-- ACK logging
+## Phase 1 — Real-time Messenger
 
-### Phase 3: Delivery guarantees
+Completed
+
+* WebSocket
+* Rooms
+* SQLite persistence
+* Redis Pub/Sub
+* Presence
+* Typing indicator
+* Reply
+* Edit
+* Delete
+* Delivery receipts
+* Read receipts
+* Message grouping
+
+---
+
+## Phase 2 — Connection Reliability
+
+Completed
+
+* Heartbeat
+* Automatic reconnect
+* Session rejoin
+* Missed message replay
+
+---
+
+## Phase 3 — Delivery Guarantees
+
+In Progress
+
+* Receiver ACK tracking
+* Pending ACKs
+* ACK timeout
+* Retry
+* Duplicate prevention
+* At-least-once delivery
+
+---
+
+## Phase 4 — Operability
 
 Planned
 
-- Pending ACK tracking
-- ACK timeout
-- Retry
-- At-least-once delivery
-- Duplicate prevention
+* Metrics
+* Active connection count
+* Message latency
+* Delivery timeline
+* Backend health dashboard
 
-### Phase 4: Operated messenger
+---
 
-Planned
+## Future Features
 
-- Metrics
-- Reconnect count
-- Message latency
-- Active connection count
-- Health dashboard
+Possible future additions:
 
-## What I learned
+* Authentication
+* File upload
+* Image messages
+* Emoji reactions
+* Search
+* Redis Streams
+* Message ordering improvements
 
-This project explores core concepts behind real messenger systems:
+---
 
-- Why WebSocket is used for real-time communication
-- Why Redis is needed when there are multiple backend instances
-- Why messages need unique IDs
-- How message status changes over time
-- Why DB storage and real-time delivery are separate concerns
-- How room isolation works
-- How presence is shared across servers
-- How heartbeat detects active connections
-- How reconnect restores WebSocket sessions
-- How missed message replay recovers messages after disconnection
-- How ACK can be used as the basis for delivery guarantees
+# What I Learned
 
-This project also helped me understand the trade-offs between real-time communication, persistent storage, connection recovery, and distributed backend architecture.
+This project helped me understand:
 
-## Running the project
+* Why WebSocket is used for real-time communication
+* Why persistence and message delivery are separate concerns
+* Why Redis Pub/Sub is needed when running multiple backend servers
+* How room isolation works
+* How presence is synchronized across servers
+* Why messages require globally unique IDs
+* How message status changes throughout its lifecycle
+* How heartbeat detects broken connections
+* How automatic reconnect restores communication
+* How missed message replay recovers lost messages
+* Why reconnect alone does not guarantee message delivery
+* Why delivery acknowledgement should be tracked from receivers instead of senders
+* How ACK tracking becomes the foundation for reliable messaging
+* How distributed messaging systems gradually build delivery guarantees
+
+---
+
+# Running the Project
+
+Start all services:
 
 ```bash
 docker compose up --build
 ```
 
-Open:
+Open two browser windows:
 
-```txt
+```text
 http://localhost:5174/?port=8001&user=Alice&room=general
+
 http://localhost:5174/?port=8002&user=Bob&room=general
 ```
 
-### Reset local database
+---
+
+# Reset Local Database
 
 ```bash
 docker compose down
+
 find . -name "messages.db" -delete
+
 docker compose up --build
 ```
 
-## Project structure
+---
 
-```txt
+# Project Structure
+
+```text
 messenger/
 ├── backend/
 │   ├── main.py
 │   ├── requirements.txt
 │   └── Dockerfile
+│
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx
 │   │   ├── MessageBubble.jsx
 │   │   └── MessageInput.jsx
 │   └── Dockerfile
+│
 └── docker-compose.yml
 ```
-

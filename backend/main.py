@@ -1,16 +1,16 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
+from collections import defaultdict
 
 import asyncio
 import json
 import redis.asyncio as redis
 import os
 import aiosqlite
-from datetime import datetime
 import uuid
 
-datetime.now(timezone.utc).isoformat()
+
 app = FastAPI()
 
 app.add_middleware(
@@ -58,7 +58,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-pending_acks = {}
+# message_id -> set of users who still need to ACK
+pending_acks: dict[str, set[str]] = defaultdict(set)
 
 DB_PATH = "messages.db"
 
@@ -181,6 +182,9 @@ async def delete_message(message_id: str):
         )
         await db.commit()
 
+# NOTE: not called yet. Kept for the upcoming ACK timeout / retry phase.
+# The (message_id, user) key format below is stale relative to the new
+# receiver-set design and will need to be updated when this is wired back in.
 async def wait_for_ack(message_id: str, user: str, room: str):
     await asyncio.sleep(5)
 
@@ -211,7 +215,6 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
 
-            
             data = await websocket.receive_json()
 
             if data["type"] == "ping":
@@ -220,7 +223,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     "ts": data.get("ts"),
                 })
                 continue
-
 
             if data["type"] == "join":
                 user = data["user"]
@@ -252,14 +254,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 data["created_at"] = datetime.utcnow().isoformat()
 
                 await save_message(data)
-                await publish(data)
-                key = (data["id"], data["user"])
-                pending_acks[key] = {
-                    "room": room,
-                    "created_at": datetime.utcnow().isoformat(),
-                }
 
-                asyncio.create_task(wait_for_ack(data["id"], data["user"], room))
+                users = await redis_client.smembers(f"presence:{room}")
+                print(f"[ACK] Presence users in {room}: {users}")
+
+                recipients = {
+                    u
+                    for u in users
+                    if u != data["user"]
+                }
+                print(f"[ACK] Recipients for {data['id']}: {recipients}")
+
+                if recipients:
+                    pending_acks[data["id"]] = recipients
+                    print(f"[ACK] Tracking {data['id']} waiting for {recipients}")
+                else:
+                    print(f"[ACK] No recipients for {data['id']}")
+
+                await publish(data)
 
             elif data["type"] == "typing":
                 await publish(data)
@@ -286,14 +298,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
 
             elif data["type"] == "ack":
-                key = (data["id"], data["user"])
-                pending_acks.pop(key, None)
+                message_id = data["id"]
+                ack_user = data["user"]
+
+                if message_id not in pending_acks:
+                    print(f"[ACK] Unknown message {message_id}")
+                    continue
+
+                pending_acks[message_id].discard(ack_user)
 
                 print(
-                    f"ACK from {data.get('user')} "
-                    f"for message {data.get('id')} "
-                    f"in room {data.get('room')}"
+                    f"[ACK] {ack_user} acknowledged "
+                    f"{message_id}. Remaining: {pending_acks[message_id]}"
                 )
+
+                if not pending_acks[message_id]:
+                    print(f"[ACK] {message_id} fully delivered")
+                    del pending_acks[message_id]
 
             elif data["type"] == "edit":
                 print("EDIT RECEIVED:", data)
@@ -314,7 +335,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "room": data.get("room", "general"),
                     "id": data["id"],
                 })
-                
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -359,6 +380,7 @@ async def get_messages(room: str = "general"):
     ]
 
     return messages
+
 async def get_messages_after(room: str, last_message_id: str | None):
     await init_db()
 
