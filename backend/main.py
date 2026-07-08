@@ -117,6 +117,11 @@ async def redis_subscriber():
             continue
 
         data = json.loads(message["data"])
+
+        if data.get("type") == "ack":
+            await handle_ack(data)
+            continue
+
         await manager.broadcast(data)
 
 async def save_message(data: dict):
@@ -181,6 +186,25 @@ async def delete_message(message_id: str):
             (message_id,),
         )
         await db.commit()
+
+async def handle_ack(data: dict):
+    message_id = data["id"]
+    ack_user = data["user"]
+
+    if message_id not in pending_acks:
+        print(f"[ACK] Unknown message {message_id}")
+        return
+
+    pending_acks[message_id].discard(ack_user)
+
+    print(
+        f"[ACK] {ack_user} acknowledged "
+        f"{message_id}. Remaining: {pending_acks[message_id]}"
+    )
+
+    if not pending_acks[message_id]:
+        print(f"[ACK] {message_id} fully delivered")
+        del pending_acks[message_id]
 
 # NOTE: not called yet. Kept for the upcoming ACK timeout / retry phase.
 # The (message_id, user) key format below is stale relative to the new
@@ -298,23 +322,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
 
             elif data["type"] == "ack":
-                message_id = data["id"]
-                ack_user = data["user"]
-
-                if message_id not in pending_acks:
-                    print(f"[ACK] Unknown message {message_id}")
-                    continue
-
-                pending_acks[message_id].discard(ack_user)
-
-                print(
-                    f"[ACK] {ack_user} acknowledged "
-                    f"{message_id}. Remaining: {pending_acks[message_id]}"
-                )
-
-                if not pending_acks[message_id]:
-                    print(f"[ACK] {message_id} fully delivered")
-                    del pending_acks[message_id]
+                await publish({
+                    "type": "ack",
+                    "room": data.get("room", room),
+                    "id": data["id"],
+                    "user": data["user"],
+                })
 
             elif data["type"] == "edit":
                 print("EDIT RECEIVED:", data)
