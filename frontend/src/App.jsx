@@ -13,6 +13,7 @@ function App() {
   const bottomRef = useRef(null);
   const heartbeatRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const processedMessageIdsRef = useRef(new Set());
 
   const [name] = useState(username);
   const [text, setText] = useState("");
@@ -32,7 +33,10 @@ function App() {
     fetch(`http://127.0.0.1:${port}/messages?room=${room}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setMessages(data);
+        if (!cancelled) {
+          data.forEach((msg) => processedMessageIdsRef.current.add(msg.id));
+          setMessages(data);
+        }
       })
       .catch((err) => console.error("fetch messages failed:", err))
       .finally(() => {
@@ -94,6 +98,17 @@ function App() {
             break;
 
           case "chat":
+            if (processedMessageIdsRef.current.has(data.id)) {
+              console.log("[DUPLICATE] ignored", data.id);
+
+              if (data.user !== name) {
+                sendAck(data.id);
+              }
+
+              break;
+            }
+
+            processedMessageIdsRef.current.add(data.id);
             setMessages((prev) => [...prev, data]);
 
             if (data.user !== name) {
@@ -115,7 +130,6 @@ function App() {
               }, 2000);
             }
             break;
-
           case "system":
             console.log("system:", data.message);
             break;
@@ -134,10 +148,15 @@ function App() {
 
           case "replay":
             setMessages((prev) => {
-              const existingIds = new Set(prev.map((msg) => msg.id));
-              const newMessages = data.messages.filter(
-                (msg) => !existingIds.has(msg.id)
-              );
+              const newMessages = data.messages.filter((msg) => {
+                if (processedMessageIdsRef.current.has(msg.id)) {
+                  console.log("[DUPLICATE REPLAY] ignored", msg.id);
+                  return false;
+                }
+
+                processedMessageIdsRef.current.add(msg.id);
+                return true;
+              });
 
               return [...prev, ...newMessages];
             });
@@ -212,6 +231,12 @@ function App() {
       })
     );
   };
+
+/*const sendAck = (messageId) => {
+    console.log("ACK disabled for timeout test", messageId);
+    return;
+  };
+  */
 
   const sendAck = (messageId) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return;

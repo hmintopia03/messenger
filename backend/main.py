@@ -56,10 +56,17 @@ class ConnectionManager:
             if info["room"] == room:
                 await connection.send_json(data)
 
+    async def send_to_user(self, room: str, user: str, data: dict):
+        for connection, info in self.active_connections.items():
+            if info["room"] == room and info["user"] == user:
+                await connection.send_json(data)
+
 manager = ConnectionManager()
 
 # message_id -> set of users who still need to ACK
 pending_acks: dict[str, set[str]] = defaultdict(set)
+# message_id -> original chat message
+pending_messages: dict[str, dict] = {}
 
 DB_PATH = "messages.db"
 
@@ -217,12 +224,29 @@ async def wait_for_ack(message_id: str, room: str):
 
     remaining = pending_acks[message_id]
 
-    if remaining:
-        print(
-            f"[ACK TIMEOUT] message={message_id} "
-            f"room={room} "
-            f"missing={remaining}"
-        )
+    if not remaining:
+        return
+
+    print(
+        f"[ACK TIMEOUT] message={message_id} "
+        f"room={room} "
+        f"missing={remaining}"
+    )
+
+    original_message = pending_messages.get(message_id)
+
+    if not original_message:
+        print(f"[RETRY] original message not found for {message_id}")
+        return
+
+    retry_message = {
+        **original_message,
+        "retry": True,
+    }
+
+    for missing_user in list(remaining):
+        await manager.send_to_user(room, missing_user, retry_message)
+        print(f"[RETRY] resent message={message_id} to={missing_user}")
 
 @app.on_event("startup")
 async def startup():
@@ -297,9 +321,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if recipients:
                     pending_acks[data["id"]] = recipients
+                    pending_messages[data["id"]] = data.copy()
+
                     print(f"[ACK] Tracking {data['id']} waiting for {recipients}")
                     asyncio.create_task(wait_for_ack(data["id"], room))
-                    
+
                 else:
                     print(f"[ACK] No recipients for {data['id']}")
 
