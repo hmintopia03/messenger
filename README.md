@@ -110,6 +110,14 @@ This project focuses on answering those questions by incrementally adding reliab
 * Session rejoin
 * Missed message replay
 
+## Delivery Reliability
+
+* Receiver-based ACK protocol
+* Pending ACK tracking
+* ACK timeout detection
+* Retry on missing ACK
+* Duplicate message prevention
+
 ---
 
 # How Messages Flow
@@ -232,19 +240,22 @@ Automatic Reconnect
 Missed Message Replay
         │
         ▼
-Receiver ACK Tracking
+Receiver ACK Tracking ✅
         │
         ▼
-Pending ACK per Message
+Pending ACK per Message ✅
         │
         ▼
-ACK Timeout
+ACK Timeout ✅
         │
         ▼
-Retry
+Retry ✅
         │
         ▼
-Duplicate Prevention
+Duplicate Prevention ✅
+        │
+        ▼
+Multi-backend Targeted Retry
         │
         ▼
 At-least-once Delivery
@@ -291,14 +302,19 @@ Completed
 
 ## Phase 3 — Delivery Guarantees
 
-In Progress
+Implemented:
 
 * Receiver ACK tracking
-* Pending ACKs
-* ACK timeout
-* Retry
-* Duplicate prevention
-* At-least-once delivery
+* Pending ACKs per message
+* ACK timeout detection
+* Retry on missing ACK
+* Duplicate prevention on the client
+
+Current limitation:
+
+* Retry currently works for users connected to the same backend instance.
+* Multi-backend ACK propagation works through Redis Pub/Sub.
+* Multi-backend targeted retry is planned.
 
 ---
 
@@ -346,6 +362,9 @@ This project helped me understand:
 * Why delivery acknowledgement should be tracked from receivers instead of senders
 * How ACK tracking becomes the foundation for reliable messaging
 * How distributed messaging systems gradually build delivery guarantees
+* Why ACK state must be shared or propagated in multi-backend systems
+* Why retry requires duplicate prevention
+* How ACK timeout can detect incomplete delivery
 
 ---
 
