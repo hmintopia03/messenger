@@ -209,14 +209,20 @@ async def handle_ack(data: dict):
 # NOTE: not called yet. Kept for the upcoming ACK timeout / retry phase.
 # The (message_id, user) key format below is stale relative to the new
 # receiver-set design and will need to be updated when this is wired back in.
-async def wait_for_ack(message_id: str, user: str, room: str):
+async def wait_for_ack(message_id: str, room: str):
     await asyncio.sleep(5)
 
-    key = (message_id, user)
+    if message_id not in pending_acks:
+        return
 
-    if key in pending_acks:
-        print(f"ACK TIMEOUT: {user} did not ack message {message_id} in room {room}")
-        pending_acks.pop(key, None)
+    remaining = pending_acks[message_id]
+
+    if remaining:
+        print(
+            f"[ACK TIMEOUT] message={message_id} "
+            f"room={room} "
+            f"missing={remaining}"
+        )
 
 @app.on_event("startup")
 async def startup():
@@ -292,6 +298,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 if recipients:
                     pending_acks[data["id"]] = recipients
                     print(f"[ACK] Tracking {data['id']} waiting for {recipients}")
+                    asyncio.create_task(wait_for_ack(data["id"], room))
+                    
                 else:
                     print(f"[ACK] No recipients for {data['id']}")
 
